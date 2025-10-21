@@ -1,0 +1,67 @@
+curl -X POST http://localhost:8001/services \
+  --data "name=user-service" \
+  --data "url=http://user-service:8081/sistema/api/v1"
+
+
+curl -X POST http://localhost:8001/services/user-service/routes \
+  --data "paths[]=/users" \
+  --data "strip_path=false"
+
+
+curl -X POST http://localhost:8001/services/user-service/plugins \
+  --data "name=cors" \
+  --data "config.origins=http://127.0.0.1:5500" \
+  --data "config.methods[]=GET" \
+  --data "config.methods[]=POST" \
+  --data "config.methods[]=OPTIONS" \
+  --data "config.headers=Accept, Content-Type, Authorization" \
+  --data "config.credentials=true"
+
+
+
+curl -X POST http://localhost:8001/services \
+  --data "name=book-service" \
+  --data "url=http://book-service:8082/sistema/api/v1"
+
+
+  curl -X POST http://localhost:8001/services/book-service/routes \
+  --data "paths[]=/books" \
+  --data "strip_path=false"
+
+
+curl -X POST http://localhost:8001/services/book-service/plugins \
+  --data "name=cors" \
+  --data "config.origins=http://127.0.0.1:5500" \
+  --data "config.methods[]=GET" \
+  --data "config.methods[]=POST" \
+  --data "config.methods[]=PUT" \
+  --data "config.methods[]=DELETE" \
+  --data "config.methods[]=OPTIONS" \
+  --data "config.headers=Accept, Content-Type, Authorization" \
+  --data "config.credentials=true"
+
+
+  curl -X POST http://localhost:8001/services \
+  --data "name=loan-service" \
+  --data "url=http://loan-service:8083/sistema/api/v1"
+
+
+curl -X POST http://localhost:8001/services/loan-service/routes \
+  --data "paths[]=/loans" \
+  --data "strip_path=false"
+
+
+  curl -X POST http://localhost:8001/services/loan-service/plugins \
+  --data "name=cors" \
+  --data "config.origins=http://127.0.0.1:5500" \
+  --data "config.methods[]=GET" \
+  --data "config.methods[]=POST" \
+  --data "config.methods[]=PUT" \
+  --data "config.methods[]=DELETE" \
+  --data "config.methods[]=OPTIONS" \
+  --data "config.headers=Accept, Content-Type, Authorization" \
+  --data "config.credentials=true"
+
+
+
+

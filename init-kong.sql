@@ -1,0 +1,3 @@
+CREATE USER konga WITH PASSWORD 'konga';
+CREATE DATABASE konga_db OWNER konga;
+GRANT ALL PRIVILEGES ON DATABASE konga_db TO konga;

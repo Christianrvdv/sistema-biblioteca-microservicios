@@ -1,0 +1,208 @@
+#deepseek
+version: '3.8'
+
+services:
+  users-db:
+    image: postgres:alpine3.19
+    container_name: users-db
+    environment:
+      POSTGRES_DB: users_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: toor
+    volumes:
+      - users-data:/var/lib/postgresql/data
+    networks:
+      - sistema-network
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d users_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  books-db:
+    image: postgres:alpine3.19
+    container_name: books-db
+    environment:
+      POSTGRES_DB: books_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: toor
+    volumes:
+      - books-data:/var/lib/postgresql/data
+    networks:
+      - sistema-network
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d books_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  loans-db:
+    image: postgres:alpine3.19
+    container_name: loans-db
+    environment:
+      POSTGRES_DB: loans_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: toor
+    volumes:
+      - loans-data:/var/lib/postgresql/data
+    networks:
+      - sistema-network
+    ports:
+      - "5435:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d loans_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  user-service:
+    build:
+      context: ./userservice
+      dockerfile: dockerfile
+    container_name: user-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://users-db:5432/users_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: toor
+    ports:
+      - "8081:8081"
+    networks:
+      - sistema-network
+    depends_on:
+      users-db:
+        condition: service_healthy
+
+  book-service:
+    build:
+      context: ./bookservice
+      dockerfile: dockerfile
+    container_name: book-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://books-db:5432/books_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: toor
+    ports:
+      - "8082:8082"
+    networks:
+      - sistema-network
+    depends_on:
+      books-db:
+        condition: service_healthy
+
+  loan-service:
+    build:
+      context: ./loanservice
+      dockerfile: dockerfile
+    container_name: loan-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://loans-db:5432/loans_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: toor
+    ports:
+      - "8083:8083"
+    networks:
+      - sistema-network
+    depends_on:
+      loans-db:
+        condition: service_healthy
+
+  kong-db:
+    image: postgres:11-alpine
+    container_name: kong-db
+    environment:
+      POSTGRES_DB: kong_db
+      POSTGRES_USER: kong
+      POSTGRES_PASSWORD: kong
+    networks:
+      - sistema-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kong -d kong_db && psql -U kong -d kong_db -tAc \"SELECT 1 FROM pg_database WHERE datname='konga_db'\" | grep -q 1"]
+      interval: 5s
+      timeout: 20s
+      retries: 25
+    volumes:
+      - kong-data:/var/lib/postgresql/data
+      - ./init-kong.sql:/docker-entrypoint-initdb.d/init.sql
+
+  kong:
+    image: kong:3.6
+    container_name: kong
+    networks:
+      - sistema-network
+    environment:
+      KONG_PG_DATABASE: kong_db
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-db
+      KONG_PG_USER: kong
+      KONG_PG_PASSWORD: kong
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+    depends_on:
+      kong-db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+      - "8443:8443"
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/status"]
+      interval: 20s
+      timeout: 15s
+      start_period: 45s
+      retries: 15
+    command: sh -c "
+      apt-get update -o Acquire::AllowInsecureRepositories=true &&
+      apt-get install -y --no-install-recommends postgresql-client &&
+      until pg_isready -h kong-db -U kong -d kong_db -t 5; do
+        sleep 2;
+        echo 'Waiting for database...';
+      done;
+      kong migrations bootstrap --force &&
+      /docker-entrypoint.sh kong docker-start"
+
+  konga:
+    image: pantsel/konga:0.14.9
+    container_name: konga
+    networks:
+      - sistema-network
+    environment:
+      DB_ADAPTER: postgres
+      DB_HOST: kong-db
+      DB_PORT: 5432
+      DB_USER: konga
+      DB_PASSWORD: konga
+      DB_DATABASE: konga_db
+      KONGA_HOOK_TIMEOUT: 120000
+      KONGA_LOG_LEVEL: debug
+      KONG_API_URL: http://kong:8001
+    depends_on:
+      kong-db:
+        condition: service_healthy
+    ports:
+      - "1337:1337"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:1337"]
+      interval: 30s
+      timeout: 30s
+      retries: 15
+      start_period: 240s
+    entrypoint: ["sh", "-c", "sleep 120 && /app/start-konga.sh"]
+    volumes:
+      - ./start-konga.sh:/app/start-konga.sh:ro
+
+volumes:
+  users-data:
+  books-data:
+  loans-data:
+  kong-data:
+
+networks:
+  sistema-network:
+    driver: bridge

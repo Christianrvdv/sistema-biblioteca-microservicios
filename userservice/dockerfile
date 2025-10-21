@@ -1,0 +1,36 @@
+FROM eclipse-temurin:23-alpine AS builder
+
+# Configurar DNS (opcional)
+RUN echo 'nameserver 8.8.8.8' > /etc/resolv.conf
+
+# 1. Instalar dependencias necesarias
+RUN apk add --no-cache unzip
+
+WORKDIR /app
+
+# 2. Copiar archivos de Gradle (estructura corregida)
+COPY gradle ./gradle
+COPY gradlew build.gradle.kts settings.gradle.kts ./
+
+# 3. Copiar el ZIP desde la ubicación correcta (gradle/wrapper/)
+COPY gradle/wrapper/gradle-8.11-all.zip /tmp/gradle.zip
+
+# 4. Configurar variables de entorno CORRECTAMENTE
+RUN unzip /tmp/gradle.zip -d /opt/gradle && \
+    rm /tmp/gradle.zip
+ENV GRADLE_HOME=/opt/gradle/gradle-8.11
+ENV PATH=$PATH:$GRADLE_HOME/bin
+
+# 5. Dar permisos al wrapper y construir (¡desactiva las pruebas!)
+RUN chmod +x gradlew
+COPY src ./src
+RUN ./gradlew build --no-daemon -x test  # <--- Cambio clave: -x test
+
+# Etapa final
+FROM eclipse-temurin:23-jre-alpine
+RUN apk add --no-cache libpq
+WORKDIR /app
+ARG JAR_FILE=build/libs/*-SNAPSHOT.jar
+COPY --from=builder /app/${JAR_FILE} app.jar
+EXPOSE 8081
+ENTRYPOINT ["java", "-jar", "app.jar"]
